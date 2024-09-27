@@ -1,130 +1,82 @@
-﻿using System;
-using System.Linq;
-using Microsoft.AspNetCore.Mvc;
-using Nop.Core;
-using Nop.Services.Catalog;
+﻿using Microsoft.AspNetCore.Mvc;
 using Nop.Services.Customers;
 using Nop.Services.Orders;
 using Nop.Services.Security;
 using Nop.Web.Areas.Admin.Factories;
 using Nop.Web.Areas.Admin.Models.ShoppingCart;
 using Nop.Web.Framework.Mvc;
+using Nop.Web.Framework.Mvc.Filters;
 
-namespace Nop.Web.Areas.Admin.Controllers
+namespace Nop.Web.Areas.Admin.Controllers;
+
+public partial class ShoppingCartController : BaseAdminController
 {
-    public partial class ShoppingCartController : BaseAdminController
+    #region Fields
+
+    protected readonly ICustomerService _customerService;
+    protected readonly IPermissionService _permissionService;
+    protected readonly IShoppingCartModelFactory _shoppingCartModelFactory;
+    protected readonly IShoppingCartService _shoppingCartService;
+    #endregion
+
+    #region Ctor
+
+    public ShoppingCartController(ICustomerService customerService,
+        IPermissionService permissionService,
+        IShoppingCartService shoppingCartService,
+        IShoppingCartModelFactory shoppingCartModelFactory)
     {
-        #region Fields
-
-        private readonly ICustomerService _customerService;
-        private readonly IPermissionService _permissionService;
-        private readonly IProductService _productService;
-        private readonly IShoppingCartModelFactory _shoppingCartModelFactory;
-        private readonly IShoppingCartService _shoppingCartService;
-        private readonly IWorkContext _workContext;
-        #endregion
-
-        #region Ctor
-
-        public ShoppingCartController(ICustomerService customerService,
-            IPermissionService permissionService,
-            IProductService productService,
-            IShoppingCartService shoppingCartService,
-            IShoppingCartModelFactory shoppingCartModelFactory,
-            IWorkContext workContext)
-        {
-            _customerService = customerService;
-            _permissionService = permissionService;
-            _productService = productService;
-            _shoppingCartModelFactory = shoppingCartModelFactory;
-            _shoppingCartService = shoppingCartService;
-            _workContext = workContext;
-        }
-
-        #endregion
-        
-        #region Methods
-        
-        public virtual IActionResult CurrentCarts()
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrentCarts))
-                return AccessDeniedView();
-
-            //prepare model
-            var model = _shoppingCartModelFactory.PrepareShoppingCartSearchModel(new ShoppingCartSearchModel());
-
-            return View(model);
-        }
-
-        [HttpPost]
-        public virtual IActionResult CurrentCarts(ShoppingCartSearchModel searchModel)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrentCarts))
-                return AccessDeniedDataTablesJson();
-
-            //prepare model
-            var model = _shoppingCartModelFactory.PrepareShoppingCartListModel(searchModel);
-
-            return Json(model);
-        }
-
-        public virtual IActionResult ProductSearchAutoComplete(string term)
-        {
-            const int searchTermMinimumLength = 3;
-            if (string.IsNullOrWhiteSpace(term) || term.Length < searchTermMinimumLength)
-                return Content(string.Empty);
-
-            //a vendor should have access only to his products
-            var vendorId = 0;
-            if (_workContext.CurrentVendor != null)
-            {
-                vendorId = _workContext.CurrentVendor.Id;
-            }
-
-            //products
-            const int productNumber = 15;
-            var products = _productService.SearchProducts(
-                vendorId: vendorId,
-                keywords: term,
-                pageSize: productNumber,
-                showHidden: true);
-
-            var result = (from p in products
-                select new
-                {
-                    label = p.Name,
-                    productid = p.Id
-                }).ToList();
-            return Json(result);
-        }
-
-        [HttpPost]
-        public virtual IActionResult GetCartDetails(ShoppingCartItemSearchModel searchModel)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrentCarts))
-                return AccessDeniedDataTablesJson();
-
-            //try to get a customer with the specified id
-            var customer = _customerService.GetCustomerById(searchModel.CustomerId)
-                ?? throw new ArgumentException("No customer found with the specified id");
-
-            //prepare model
-            var model = _shoppingCartModelFactory.PrepareShoppingCartItemListModel(searchModel, customer);
-
-            return Json(model);
-        }
-        
-        [HttpPost]
-        public virtual IActionResult DeleteItem(int id)
-        {
-            if (!_permissionService.Authorize(StandardPermissionProvider.ManageCurrentCarts))
-                return AccessDeniedDataTablesJson();
-            
-            _shoppingCartService.DeleteShoppingCartItem(id);
-
-            return new NullJsonResult();
-        }
-
-        #endregion
+        _customerService = customerService;
+        _permissionService = permissionService;
+        _shoppingCartModelFactory = shoppingCartModelFactory;
+        _shoppingCartService = shoppingCartService;
     }
+
+    #endregion
+
+    #region Methods
+
+    [CheckPermission(StandardPermission.Orders.CURRENT_CARTS_MANAGE)]
+    public virtual async Task<IActionResult> CurrentCarts()
+    {
+        //prepare model
+        var model = await _shoppingCartModelFactory.PrepareShoppingCartSearchModelAsync(new ShoppingCartSearchModel());
+
+        return View(model);
+    }
+
+    [HttpPost]
+    [CheckPermission(StandardPermission.Orders.CURRENT_CARTS_MANAGE)]
+    public virtual async Task<IActionResult> CurrentCarts(ShoppingCartSearchModel searchModel)
+    {
+        //prepare model
+        var model = await _shoppingCartModelFactory.PrepareShoppingCartListModelAsync(searchModel);
+
+        return Json(model);
+    }
+
+    [HttpPost]
+    [CheckPermission(StandardPermission.Orders.CURRENT_CARTS_MANAGE)]
+    public virtual async Task<IActionResult> GetCartDetails(ShoppingCartItemSearchModel searchModel)
+    {
+        //try to get a customer with the specified id
+        var customer = await _customerService.GetCustomerByIdAsync(searchModel.CustomerId)
+                       ?? throw new ArgumentException("No customer found with the specified id");
+
+        //prepare model
+        var model = await _shoppingCartModelFactory.PrepareShoppingCartItemListModelAsync(searchModel, customer);
+
+        return Json(model);
+    }
+
+    [HttpPost]
+    [CheckPermission(StandardPermission.Orders.CURRENT_CARTS_MANAGE)]
+    public virtual async Task<IActionResult> DeleteItem(int id)
+    {
+        await _shoppingCartService.DeleteShoppingCartItemAsync(id);
+
+        return new NullJsonResult();
+    }
+
+    #endregion
 }

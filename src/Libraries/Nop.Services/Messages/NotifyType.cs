@@ -1,21 +1,22 @@
-﻿namespace Nop.Services.Messages
+﻿namespace Nop.Services.Messages;
+
+/// <summary>
+/// Notification type
+/// </summary>
+public enum NotifyType
 {
     /// <summary>
-    /// Notification type
+    /// Success
     /// </summary>
-    public enum NotifyType
-    {
-        /// <summary>
-        /// Success
-        /// </summary>
-        Success,
-        /// <summary>
-        /// Error
-        /// </summary>
-        Error,
-        /// <summary>
-        /// Warning
-        /// </summary>
-        Warning
-    }
+    Success,
+
+    /// <summary>
+    /// Error
+    /// </summary>
+    Error,
+
+    /// <summary>
+    /// Warning
+    /// </summary>
+    Warning
 }

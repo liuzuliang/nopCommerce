@@ -9,13 +9,15 @@ var AjaxCart = {
     topcartselector: '',
     topwishlistselector: '',
     flyoutcartselector: '',
+    localized_data: false,
 
-    init: function (usepopupnotifications, topcartselector, topwishlistselector, flyoutcartselector) {
+    init: function (usepopupnotifications, topcartselector, topwishlistselector, flyoutcartselector, localized_data) {
         this.loadWaiting = false;
         this.usepopupnotifications = usepopupnotifications;
         this.topcartselector = topcartselector;
         this.topwishlistselector = topwishlistselector;
         this.flyoutcartselector = flyoutcartselector;
+        this.localized_data = localized_data;
     },
 
     setLoadWaiting: function (display) {
@@ -25,15 +27,19 @@ var AjaxCart = {
 
     //add a product to the cart/wishlist from the catalog pages
     addproducttocart_catalog: function (urladd) {
-        if (this.loadWaiting != false) {
+        if (this.loadWaiting !== false) {
             return;
         }
         this.setLoadWaiting(true);
+
+        var postData = {};
+        addAntiForgeryToken(postData);
 
         $.ajax({
             cache: false,
             url: urladd,
             type: "POST",
+            data: postData,
             success: this.success_process,
             complete: this.resetLoadWaiting,
             error: this.ajaxFailure
@@ -42,7 +48,7 @@ var AjaxCart = {
 
     //add a product to the cart/wishlist from the product details page
     addproducttocart_details: function (urladd, formselector) {
-        if (this.loadWaiting != false) {
+        if (this.loadWaiting !== false) {
             return;
         }
         this.setLoadWaiting(true);
@@ -60,15 +66,19 @@ var AjaxCart = {
 
     //add a product to compare list
     addproducttocomparelist: function (urladd) {
-        if (this.loadWaiting != false) {
+        if (this.loadWaiting !== false) {
             return;
         }
         this.setLoadWaiting(true);
+
+        var postData = {};
+        addAntiForgeryToken(postData);
 
         $.ajax({
             cache: false,
             url: urladd,
             type: "POST",
+            data: postData,
             success: this.success_process,
             complete: this.resetLoadWaiting,
             error: this.ajaxFailure
@@ -87,9 +97,9 @@ var AjaxCart = {
         }
         if (response.message) {
             //display notification
-            if (response.success == true) {
+            if (response.success === true) {
                 //success
-                if (AjaxCart.usepopupnotifications == true) {
+                if (AjaxCart.usepopupnotifications === true) {
                     displayPopupNotification(response.message, 'success', true);
                 }
                 else {
@@ -99,7 +109,7 @@ var AjaxCart = {
             }
             else {
                 //error
-                if (AjaxCart.usepopupnotifications == true) {
+                if (AjaxCart.usepopupnotifications === true) {
                     displayPopupNotification(response.message, 'error', true);
                 }
                 else {
@@ -121,6 +131,6 @@ var AjaxCart = {
     },
 
     ajaxFailure: function () {
-        alert('Failed to add the product. Please refresh the page and try one more time.');
+        alert(this.localized_data.AjaxCartFailure);
     }
 };

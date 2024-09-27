@@ -1,224 +1,194 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
+﻿using System.Globalization;
 using Nop.Core.Caching;
-using Nop.Core.Data;
 using Nop.Core.Domain.Localization;
+using Nop.Data;
 using Nop.Services.Configuration;
-using Nop.Services.Events;
 using Nop.Services.Stores;
 
-namespace Nop.Services.Localization
+namespace Nop.Services.Localization;
+
+/// <summary>
+/// Language service
+/// </summary>
+public partial class LanguageService : ILanguageService
 {
-    /// <summary>
-    /// Language service
-    /// </summary>
-    public partial class LanguageService : ILanguageService
+    #region Fields
+
+    protected readonly IRepository<Language> _languageRepository;
+    protected readonly ISettingService _settingService;
+    protected readonly IStaticCacheManager _staticCacheManager;
+    protected readonly IStoreMappingService _storeMappingService;
+    protected readonly LocalizationSettings _localizationSettings;
+
+    #endregion
+
+    #region Ctor
+
+    public LanguageService(IRepository<Language> languageRepository,
+        ISettingService settingService,
+        IStaticCacheManager staticCacheManager,
+        IStoreMappingService storeMappingService,
+        LocalizationSettings localizationSettings)
     {
-        #region Fields
+        _languageRepository = languageRepository;
+        _settingService = settingService;
+        _staticCacheManager = staticCacheManager;
+        _storeMappingService = storeMappingService;
+        _localizationSettings = localizationSettings;
+    }
 
-        private readonly IEventPublisher _eventPublisher;
-        private readonly IRepository<Language> _languageRepository;
-        private readonly ISettingService _settingService;
-        private readonly IStaticCacheManager _cacheManager;
-        private readonly IStoreMappingService _storeMappingService;
-        private readonly LocalizationSettings _localizationSettings;
+    #endregion
 
-        #endregion
+    #region Methods
 
-        #region Ctor
+    /// <summary>
+    /// Deletes a language
+    /// </summary>
+    /// <param name="language">Language</param>
+    /// <returns>A task that represents the asynchronous operation</returns>
+    public virtual async Task DeleteLanguageAsync(Language language)
+    {
+        ArgumentNullException.ThrowIfNull(language);
 
-        public LanguageService(IEventPublisher eventPublisher,
-            IRepository<Language> languageRepository,
-            ISettingService settingService,
-            IStaticCacheManager cacheManager,
-            IStoreMappingService storeMappingService,
-            LocalizationSettings localizationSettings)
-        {
-            _eventPublisher = eventPublisher;
-            _languageRepository = languageRepository;
-            _settingService = settingService;
-            _cacheManager = cacheManager;
-            _storeMappingService = storeMappingService;
-            _localizationSettings = localizationSettings;
-        }
-
-        #endregion
-
-        #region Methods
-
-        /// <summary>
-        /// Deletes a language
-        /// </summary>
-        /// <param name="language">Language</param>
-        public virtual void DeleteLanguage(Language language)
-        {
-            if (language == null)
-                throw new ArgumentNullException(nameof(language));
-
-            if (language is IEntityForCaching)
-                throw new ArgumentException("Cacheable entities are not supported by Entity Framework");
-
-            //update default admin area language (if required)
-            if (_localizationSettings.DefaultAdminLanguageId == language.Id)
+        //update default admin area language (if required)
+        if (_localizationSettings.DefaultAdminLanguageId == language.Id)
+            foreach (var activeLanguage in await GetAllLanguagesAsync())
             {
-                foreach (var activeLanguage in GetAllLanguages())
-                {
-                    if (activeLanguage.Id == language.Id) 
-                        continue;
+                if (activeLanguage.Id == language.Id)
+                    continue;
 
-                    _localizationSettings.DefaultAdminLanguageId = activeLanguage.Id;
-                    _settingService.SaveSetting(_localizationSettings);
-                    break;
-                }
+                _localizationSettings.DefaultAdminLanguageId = activeLanguage.Id;
+                await _settingService.SaveSettingAsync(_localizationSettings);
+                break;
             }
 
-            _languageRepository.Delete(language);
+        await _languageRepository.DeleteAsync(language);
+    }
 
-            //cache
-            _cacheManager.RemoveByPrefix(NopLocalizationDefaults.LanguagesPrefixCacheKey);
+    /// <summary>
+    /// Gets all languages
+    /// </summary>
+    /// <param name="storeId">Load records allowed only in a specified store; pass 0 to load all records</param>
+    /// <param name="showHidden">A value indicating whether to show hidden records</param>
+    /// <returns>
+    /// A task that represents the asynchronous operation
+    /// The task result contains the languages
+    /// </returns>
+    public virtual async Task<IList<Language>> GetAllLanguagesAsync(bool showHidden = false, int storeId = 0)
+    {
+        //cacheable copy
+        var key = _staticCacheManager.PrepareKeyForDefaultCache(NopLocalizationDefaults.LanguagesAllCacheKey, storeId, showHidden);
 
-            //event notification
-            _eventPublisher.EntityDeleted(language);
-        }
-
-        /// <summary>
-        /// Gets all languages
-        /// </summary>
-        /// <param name="storeId">Load records allowed only in a specified store; pass 0 to load all records</param>
-        /// <param name="showHidden">A value indicating whether to show hidden records</param>
-        /// <param name="loadCacheableCopy">A value indicating whether to load a copy that could be cached (workaround until Entity Framework supports 2-level caching)</param>
-        /// <returns>Languages</returns>
-        public virtual IList<Language> GetAllLanguages(bool showHidden = false, int storeId = 0, bool loadCacheableCopy = true)
+        var languages = await _staticCacheManager.GetAsync(key, async () =>
         {
-            IList<Language> LoadLanguagesFunc()
+            var allLanguages = await _languageRepository.GetAllAsync(query =>
             {
-                var query = _languageRepository.Table;
-                if (!showHidden) query = query.Where(l => l.Published);
+                if (!showHidden)
+                    query = query.Where(l => l.Published);
                 query = query.OrderBy(l => l.DisplayOrder).ThenBy(l => l.Id);
-                return query.ToList();
-            }
 
-            IList<Language> languages;
-            if (loadCacheableCopy)
-            {
-                //cacheable copy
-                var key = string.Format(NopLocalizationDefaults.LanguagesAllCacheKey, showHidden);
-                languages = _cacheManager.Get(key, () =>
-                {
-                    var result = new List<Language>();
-                    foreach (var language in LoadLanguagesFunc())
-                        result.Add(new LanguageForCaching(language));
-                    return result;
-                });
-            }
-            else
-            {
-                languages = LoadLanguagesFunc();
-            }
+                return query;
+            });
 
             //store mapping
             if (storeId > 0)
+                allLanguages = await allLanguages
+                    .WhereAwait(async l => await _storeMappingService.AuthorizeAsync(l, storeId))
+                    .ToListAsync();
+
+            return allLanguages;
+        });
+
+        return languages;
+    }
+
+    /// <summary>
+    /// Gets all languages
+    /// </summary>
+    /// <param name="storeId">Load records allowed only in a specified store; pass 0 to load all records</param>
+    /// <param name="showHidden">A value indicating whether to show hidden records</param>
+    /// <returns>
+    /// The languages
+    /// </returns>
+    public virtual IList<Language> GetAllLanguages(bool showHidden = false, int storeId = 0)
+    {
+        //cacheable copy
+        var key = _staticCacheManager.PrepareKeyForDefaultCache(NopLocalizationDefaults.LanguagesAllCacheKey, storeId, showHidden);
+
+        var languages = _staticCacheManager.Get(key, () =>
+        {
+            var allLanguages = _languageRepository.GetAll(query =>
             {
-                languages = languages
+                if (!showHidden)
+                    query = query.Where(l => l.Published);
+                query = query.OrderBy(l => l.DisplayOrder).ThenBy(l => l.Id);
+
+                return query;
+            });
+
+            //store mapping
+            if (storeId > 0)
+                allLanguages = allLanguages
                     .Where(l => _storeMappingService.Authorize(l, storeId))
                     .ToList();
-            }
 
-            return languages;
-        }
+            return allLanguages;
+        });
 
-        /// <summary>
-        /// Gets a language
-        /// </summary>
-        /// <param name="languageId">Language identifier</param>
-        /// <param name="loadCacheableCopy">A value indicating whether to load a copy that could be cached (workaround until Entity Framework supports 2-level caching)</param>
-        /// <returns>Language</returns>
-        public virtual Language GetLanguageById(int languageId, bool loadCacheableCopy = true)
-        {
-            if (languageId == 0)
-                return null;
-
-            Language LoadLanguageFunc()
-            {
-                return _languageRepository.GetById(languageId);
-            }
-
-            if (!loadCacheableCopy) 
-                return LoadLanguageFunc();
-
-            //cacheable copy
-            var key = string.Format(NopLocalizationDefaults.LanguagesByIdCacheKey, languageId);
-            return _cacheManager.Get(key, () =>
-            {
-                var language = LoadLanguageFunc();
-                return language == null ? null : new LanguageForCaching(language);
-            });
-        }
-
-        /// <summary>
-        /// Inserts a language
-        /// </summary>
-        /// <param name="language">Language</param>
-        public virtual void InsertLanguage(Language language)
-        {
-            if (language == null)
-                throw new ArgumentNullException(nameof(language));
-
-            if (language is IEntityForCaching)
-                throw new ArgumentException("Cacheable entities are not supported by Entity Framework");
-
-            _languageRepository.Insert(language);
-
-            //cache
-            _cacheManager.RemoveByPrefix(NopLocalizationDefaults.LanguagesPrefixCacheKey);
-
-            //event notification
-            _eventPublisher.EntityInserted(language);
-        }
-
-        /// <summary>
-        /// Updates a language
-        /// </summary>
-        /// <param name="language">Language</param>
-        public virtual void UpdateLanguage(Language language)
-        {
-            if (language == null)
-                throw new ArgumentNullException(nameof(language));
-
-            if (language is IEntityForCaching)
-                throw new ArgumentException("Cacheable entities are not supported by Entity Framework");
-
-            //update language
-            _languageRepository.Update(language);
-
-            //cache
-            _cacheManager.RemoveByPrefix(NopLocalizationDefaults.LanguagesPrefixCacheKey);
-
-            //event notification
-            _eventPublisher.EntityUpdated(language);
-        }
-
-        /// <summary>
-        /// Get 2 letter ISO language code
-        /// </summary>
-        /// <param name="language">Language</param>
-        /// <returns>ISO language code</returns>
-        public virtual string GetTwoLetterIsoLanguageName(Language language)
-        {
-            if (language == null)
-                throw new ArgumentNullException(nameof(language));
-
-            if (string.IsNullOrEmpty(language.LanguageCulture))
-                return "en";
-
-            var culture = new CultureInfo(language.LanguageCulture);
-            var code = culture.TwoLetterISOLanguageName;
-
-            return string.IsNullOrEmpty(code) ? "en" : code;
-        }
-
-        #endregion
+        return languages;
     }
+
+    /// <summary>
+    /// Gets a language
+    /// </summary>
+    /// <param name="languageId">Language identifier</param>
+    /// <returns>
+    /// A task that represents the asynchronous operation
+    /// The task result contains the language
+    /// </returns>
+    public virtual async Task<Language> GetLanguageByIdAsync(int languageId)
+    {
+        return await _languageRepository.GetByIdAsync(languageId, cache => default);
+    }
+
+    /// <summary>
+    /// Inserts a language
+    /// </summary>
+    /// <param name="language">Language</param>
+    /// <returns>A task that represents the asynchronous operation</returns>
+    public virtual async Task InsertLanguageAsync(Language language)
+    {
+        await _languageRepository.InsertAsync(language);
+    }
+
+    /// <summary>
+    /// Updates a language
+    /// </summary>
+    /// <param name="language">Language</param>
+    /// <returns>A task that represents the asynchronous operation</returns>
+    public virtual async Task UpdateLanguageAsync(Language language)
+    {
+        //update language
+        await _languageRepository.UpdateAsync(language);
+    }
+
+    /// <summary>
+    /// Get 2 letter ISO language code
+    /// </summary>
+    /// <param name="language">Language</param>
+    /// <returns>ISO language code</returns>
+    public virtual string GetTwoLetterIsoLanguageName(Language language)
+    {
+        ArgumentNullException.ThrowIfNull(language);
+
+        if (string.IsNullOrEmpty(language.LanguageCulture))
+            return "en";
+
+        var culture = new CultureInfo(language.LanguageCulture);
+        var code = culture.TwoLetterISOLanguageName;
+
+        return string.IsNullOrEmpty(code) ? "en" : code;
+    }
+
+    #endregion
 }

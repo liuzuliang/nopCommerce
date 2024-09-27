@@ -98,7 +98,7 @@
             @if (Model.AllowPostVoting)
             {
                 <script asp-location="Footer">
-                    $(document).ready(function () {
+                    $(function() {
                         var post = '#post-vote-' + @Model.Id;
                         $(post + ' span.vote').on('click', function () {
                             var postData = {
@@ -109,7 +109,7 @@
                             $.ajax({
                                 cache: false,
                                 type: "POST",
-                                url: "@Url.Action("PostVote", "Boards")",
+                                url: "@Url.RouteUrl("PostVote")",
                                 data: postData,
                                 success: function (data, textStatus, jqXHR) {
                                     if (data.Error) {
@@ -137,10 +137,10 @@
 
                 <div class="post-vote" id="@($"post-vote-{Model.Id}")">
                     <span class="vote up @if (Model.VoteIsUp.HasValue && (bool) Model.VoteIsUp){<text>selected</text>}"
-                          title="This post/answer is useful"></span>
+                          title="@T("Forum.Post.IsUseful")"></span>
                     <div class="vote-count-post"> @Model.VoteCount </div>
                     <span class="vote down @if (Model.VoteIsUp.HasValue && (bool)!Model.VoteIsUp) { <text>selected</text> }"
-                          title="This post/answer is not useful"></span>
+                          title="@T("Forum.Post.IsNotUseful")"></span>
                 </div>
             }
         </div>

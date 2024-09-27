@@ -1,28 +1,27 @@
 ﻿@model CheckGiftCardBalanceModel
 
 @using Nop.Core
-@using Nop.Core.Domain.Customers
-@using Nop.Web.Framework.UI;
+@using Nop.Services.Customers
 @inject IWorkContext workContext
+@inject ICustomerService customerService
 
 @{
-    var isRegisterCustomer = workContext.CurrentCustomer.IsRegistered();
+    var isRegisterCustomer = await customerService.IsRegisteredAsync(await workContext.GetCurrentCustomerAsync());
     Layout = isRegisterCustomer ? "_ColumnsTwo" : "_ColumnsOne";
 
     //title
-    Html.AddTitleParts(T("PageTitle.CheckGiftCardBalance").Text);
+    NopHtml.AddTitleParts(T("PageTitle.CheckGiftCardBalance").Text);
     //page class
-    Html.AppendPageCssClassParts("html-account-page");
+    NopHtml.AppendPageCssClassParts("html-account-page");
 }
 
 @if (isRegisterCustomer)
 {
     @section left
     {
-        @await Component.InvokeAsync("CustomerNavigation", new { selectedTabId = CustomerNavigationEnum.CheckGiftCardBalance })
+        @await Component.InvokeAsync(typeof(CustomerNavigationViewComponent), new { selectedTabId = CustomerNavigationEnum.CheckGiftCardBalance })
     }
 }
-
 
 <div class="page account-page check-gift-card-balance-page">
     <div class="page-title">
@@ -36,6 +35,7 @@
         }
     </div>
     <div class="page-body">
+        @await Component.InvokeAsync(typeof(WidgetViewComponent), new { widgetZone = PublicWidgetZones.CustomerCheckGiftCardBalanceTop, additionalData = Model })
         @if (!string.IsNullOrEmpty(Model.Message))
         {
             <div class="message-error">
@@ -58,24 +58,23 @@
                         <nop-required />
                         <span asp-validation-for="GiftCardCode"></span>
                     </div>
-                    <div class="captcha-box">
-                        <nop-captcha />
-                    </div>
-                </div>
-                <div class="buttons">
-                    <input type="submit" name="checkbalancegiftcard" id="checkbalancegiftcard" class="button-1 check-gift-card-balance-button" value="@T("CheckGiftCard.GiftCardCouponCode.Button")" />
-                    <script asp-location="Footer">
-                        $(document).ready(function () {
-                            $('#giftcardcouponcode').keydown(function (event) {
-                                if (event.keyCode == 13) {
-                                    $('#checkbalancegiftcard').click();
-                                    return false;
-                                }
-                            });
-                        });
-                    </script>
+                    <nop-captcha />
                 </div>
             </div>
+            <div class="buttons">
+                <button type="submit" name="checkbalancegiftcard" id="checkbalancegiftcard" class="button-1 check-gift-card-balance-button">@T("CheckGiftCard.GiftCardCouponCode.Button")</button>
+                <script asp-location="Footer">
+                    $(function() {
+                        $('#giftcardcouponcode').keydown(function (event) {
+                            if (event.keyCode == 13) {
+                                $('#checkbalancegiftcard').trigger('click');
+                                return false;
+                            }
+                        });
+                    });
+                </script>
+            </div>
         </form>
+        @await Component.InvokeAsync(typeof(WidgetViewComponent), new { widgetZone = PublicWidgetZones.CustomerCheckGiftCardBalanceBottom, additionalData = Model })
     </div>
 </div>
